@@ -20,6 +20,6 @@ Enable debug mode for Fullstory. This is useful for troubleshooting any issues w
 
 ### Enable capture inside an iframe
 
-Enable Fullstory capturing from an iframe content. This is required in only certain implementation scenarios. This flag is equivalant of setting the global flag `window['_fs_run_in_iframe']`.
+Allow Fullstory to capture data from within an iframe. This is required only for certain implementation scenarios. This flag is equivalent to setting the global flag `window['_fs_run_in_iframe']`.
 
 For more information about this flag please visit the [help page here](https://help.fullstory.com/hc/en-us/articles/360020622514-Can-Fullstory-capture-content-that-is-presented-in-iframes).
