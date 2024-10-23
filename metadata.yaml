@@ -1,5 +1,5 @@
 homepage: "https://www.fullstory.com"
-documentation: TODO
+documentation: https://github.com/fullstorydev/fullstory-gtm-template/blob/main/README.md
 versions:
   - sha: TODO
     changeNotes: Initial release.
