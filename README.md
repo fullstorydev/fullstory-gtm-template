@@ -16,7 +16,7 @@ The Fullstory Org Id must be provided. For more information on how to find the O
 
 ### Debug mode
 
-Enable the debug mode for Fullstory, this is useful for troubleshooting any issue with the Fullstory installation. For more information on the debug mode, visit the [help page here](https://help.fullstory.com/hc/en-us/articles/360020829233-How-to-enable-debug-mode-for-Fullstory).
+Enable debug mode for Fullstory. This is useful for troubleshooting any issues with the Fullstory installation. For more information on debug mode, visit the [help page here](https://help.fullstory.com/hc/en-us/articles/360020829233-How-to-enable-debug-mode-for-Fullstory).
 
 ### Enable capture inside an iframe
 
