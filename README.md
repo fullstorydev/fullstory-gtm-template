@@ -6,7 +6,7 @@ Automatically collect behavioral data into the Fullstory platform with the Fulls
 
 # Fullstory
 
-Find more information about Fullstory, please visit https://www.fullstory.com/
+To find more information about Fullstory, please visit https://www.fullstory.com/
 
 # GTM Tag Fields
 
