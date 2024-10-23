@@ -1,6 +1,6 @@
 # Fullstory - Browser Tag
 
-This repository is used for the [Fullstory - Browser Tag](TODO) in Google GTM Community Template Gallery.
+This repository is used for the [Fullstory - Browser Tag](TODO) in the Google GTM Community Template Gallery.
 
 Automatically collect behavioral data into the Fullstory platform with the Fullstory Tag template.
 
