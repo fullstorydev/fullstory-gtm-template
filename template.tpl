@@ -70,6 +70,10 @@ const script = 'edge.fullstory.com/s/' + debugMode ? 'fs.js' : 'fs-debug.js';
 (function (){
   log('Recieved data:', data);
 
+  if (!orgId) {
+    return onFailure();
+  }
+
   setInWindow('_fs_host', host);
   setInWindow('_fs_script', script);
   setInWindow('_fs_namespace', namespace);
