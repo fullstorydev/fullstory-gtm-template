@@ -61,7 +61,7 @@ ___TEMPLATE_PARAMETERS___
     "name": "runInIframe",
     "checkboxText": "Enable capture inside an iframe",
     "simpleValueType": true,
-    "help": "Enables FullStory inside an iframe."
+    "help": "Enables Fullstory inside an iframe."
   }
 ]
 
