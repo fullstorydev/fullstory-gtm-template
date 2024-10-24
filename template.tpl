@@ -36,7 +36,7 @@ ___TEMPLATE_PARAMETERS___
     "displayName": "Org Id",
     "simpleValueType": true,
     "notSetText": "Org Id is required.",
-    "help": "Your orgnization ID from Fullstory.",
+    "help": "Your Org Id from Fullstory.",
     "valueValidators": [
       {
         "type": "NON_EMPTY"
