@@ -54,7 +54,7 @@ ___TEMPLATE_PARAMETERS___
     "name": "debugMode",
     "checkboxText": "Debug mode",
     "simpleValueType": true,
-    "help": "Enables FullStory debug mode."
+    "help": "Enables Fullstory debug mode."
   },
   {
     "type": "CHECKBOX",
@@ -100,12 +100,12 @@ const script = 'edge.fullstory.com/s/' + debugMode ? 'fs.js' : 'fs-debug.js';
   injectScript(url, onSuccess, onFailure);
 
   function onSuccess() {
-    log('Successfully loaded the FullStory Snippet.');
+    log('Successfully loaded the Fullstory Snippet.');
     data.gtmOnSuccess();
   }
 
   function onFailure() {
-    log('Failed to load the FullStory Snippet.');
+    log('Failed to load the Fullstory Snippet.');
     data.gtmOnFailure();
   }
 }());
