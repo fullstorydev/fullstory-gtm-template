@@ -390,7 +390,7 @@ scenarios:
         onSuccess();
     });
 
-    runCode();
+    runCode({ orgId:"test" });
 
     assertApi('gtmOnSuccess').wasCalled();
 
