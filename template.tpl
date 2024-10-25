@@ -79,7 +79,7 @@ const orgId = data.orgId;
 
 const host = 'fullstory.com';
 const namespace = 'FS';
-const script = 'edge.fullstory.com/s/' + debugMode ? 'fs.js' : 'fs-debug.js';
+const script = 'edge.fullstory.com/s/' + debugMode ? 'fs-debug.js' : 'fs.js';
 
 
 (function (){
