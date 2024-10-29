@@ -1,5 +1,5 @@
 homepage: "https://www.fullstory.com"
 documentation: https://github.com/fullstorydev/fullstory-gtm-template/blob/main/README.md
 versions:
-  - sha: TODO
+  - sha: 780ac5088dd4bfd192405e7446691d5a92785eca
     changeNotes: Initial release.
