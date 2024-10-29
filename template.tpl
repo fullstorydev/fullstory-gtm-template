@@ -95,7 +95,7 @@ const script = 'edge.fullstory.com/s/' + debugMode ? 'fs-debug.js' : 'fs.js';
   setInWindow('_fs_org', orgId);
   setInWindow('_fs_run_in_iframe', runInIframe);
 
-  const url = "https://edge.fullstory.com/code/v2/snippet?type=raw";
+  const url = "https://edge.fullstory.com/d/snippet/v2.js?type=raw";
 
   injectScript(url, onSuccess, onFailure);
 
@@ -149,7 +149,7 @@ ___WEB_PERMISSIONS___
             "listItem": [
               {
                 "type": 1,
-                "string": "https://edge.fullstory.com/code/v2/snippet*"
+                "string": "https://edge.fullstory.com/d/snippet/*"
               }
             ]
           }
