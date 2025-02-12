@@ -71,7 +71,7 @@ ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 const setInWindow = require('setInWindow');
 const injectScript = require('injectScript');
 // note: permission to log only during debug/preview
-const log = require('logToConsole'); 
+const log = require('logToConsole');
 
 const debugMode = data.debugMode;
 const runInIframe = data.runInIframe;
@@ -79,7 +79,7 @@ const orgId = data.orgId;
 
 const host = 'fullstory.com';
 const namespace = 'FS';
-const script = 'edge.fullstory.com/s/' + debugMode ? 'fs-debug.js' : 'fs.js';
+const script = 'edge.fullstory.com/s/' + (debugMode ? 'fs-debug.js' : 'fs.js');
 
 
 (function (){
