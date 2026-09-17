@@ -11,7 +11,7 @@ ___INFO___
 {
   "type": "TAG",
   "id": "cvt_temp_public_id",
-  "version": 1,
+  "version": 2,
   "securityGroups": [],
   "displayName": "Fullstory - Browser Tag",
   "categories": ["ANALYTICS", "CONVERSIONS", "DATA_WAREHOUSING", "HEAT_MAP", "SESSION_RECORDING"],
@@ -44,7 +44,7 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "REGEX",
         "args": [
-          "[0-9A-Za-z._-]+"
+          "^[0-9A-Za-z._-]+$"
         ]
       }
     ]
@@ -70,6 +70,7 @@ ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 
 const setInWindow = require('setInWindow');
 const injectScript = require('injectScript');
+const encodeUriComponent = require('encodeUriComponent');
 // note: permission to log only during debug/preview
 const log = require('logToConsole');
 
@@ -77,25 +78,24 @@ const debugMode = data.debugMode;
 const runInIframe = data.runInIframe;
 const orgId = data.orgId;
 
-const host = 'fullstory.com';
-const namespace = 'FS';
-const script = 'edge.fullstory.com/s/' + (debugMode ? 'fs-debug.js' : 'fs.js');
+const DEBUG_SCRIPT = 'edge.fullstory.com/s/fs-debug.js';
 
 
 (function (){
-  log('Recieved data:', data);
+  log('Received data:', data);
 
   if (!orgId) {
     return onFailure();
   }
 
-  setInWindow('_fs_host', host);
-  setInWindow('_fs_script', script);
-  setInWindow('_fs_namespace', namespace);
-  setInWindow('_fs_org', orgId);
   setInWindow('_fs_run_in_iframe', runInIframe);
 
-  const url = "https://edge.fullstory.com/d/snippet/v2.js?type=raw";
+  let url = 'https://edge.fullstory.com/d/snippet/v2.1.js?type=raw' +
+      '&org=' + encodeUriComponent(orgId);
+
+  if (debugMode) {
+    url = url + '&script=' + encodeUriComponent(DEBUG_SCRIPT);
+  }
 
   injectScript(url, onSuccess, onFailure);
 
@@ -196,163 +196,7 @@ ___WEB_PERMISSIONS___
                 "mapValue": [
                   {
                     "type": 1,
-                    "string": "_fs_host"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "_fs_script"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
                     "string": "_fs_run_in_iframe"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "_fs_org"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "_fs_namespace"
                   },
                   {
                     "type": 8,
@@ -393,6 +237,37 @@ scenarios:
     runCode({ orgId:"test" });
 
     assertApi('gtmOnSuccess').wasCalled();
+- name: TestSetsOrgIdOnInjectedUrl
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123');
+- name: TestDebugModeUsesDebugScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123&script=edge.fullstory.com%2Fs%2Ffs-debug.js');
+- name: TestFailsWithoutOrgId
+  code: |-
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        onSuccess();
+    });
+
+    runCode({ orgId:"" });
+
+    assertApi('gtmOnFailure').wasCalled();
 
 
 ___NOTES___
