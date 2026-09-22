@@ -44,7 +44,7 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "REGEX",
         "args": [
-          "[0-9A-Za-z._-]+"
+          "^[0-9A-Za-z._-]+$"
         ]
       }
     ]
@@ -54,7 +54,7 @@ ___TEMPLATE_PARAMETERS___
     "name": "debugMode",
     "checkboxText": "Debug mode",
     "simpleValueType": true,
-    "help": "Enables Fullstory debug mode."
+    "help": "Enables Fullstory debug mode. Ignored if using Custom Endpoints."
   },
   {
     "type": "CHECKBOX",
@@ -62,6 +62,21 @@ ___TEMPLATE_PARAMETERS___
     "checkboxText": "Enable capture inside an iframe",
     "simpleValueType": true,
     "help": "Enables Fullstory inside an iframe."
+  },
+  {
+    "type": "TEXT",
+    "name": "customEndpoint",
+    "displayName": "Custom Endpoint (Optional)",
+    "simpleValueType": true,
+    "help": "If your org sends traffic through a Fullstory-managed Custom Endpoint (your own domain, CNAME'd to Fullstory), enter that domain here, e.g. \"analytics.example.com\". Leave blank to use Fullstory's default domain. Learn more: https://help.fullstory.com/hc/en-us/articles/18612999473175",
+    "valueValidators": [
+      {
+        "type": "REGEX",
+        "args": [
+          "^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+)?$"
+        ]
+      }
+    ]
   }
 ]
 
@@ -70,32 +85,82 @@ ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 
 const setInWindow = require('setInWindow');
 const injectScript = require('injectScript');
+const encodeUriComponent = require('encodeUriComponent');
 // note: permission to log only during debug/preview
 const log = require('logToConsole');
 
 const debugMode = data.debugMode;
 const runInIframe = data.runInIframe;
 const orgId = data.orgId;
+const customEndpoint = data.customEndpoint;
 
-const host = 'fullstory.com';
-const namespace = 'FS';
-const script = 'edge.fullstory.com/s/' + (debugMode ? 'fs-debug.js' : 'fs.js');
+const EDGE_HOST = 'edge.fullstory.com';
+const EU_EDGE_HOST = 'edge.eu1.fullstory.com';
+const APP_HOST = 'app.fullstory.com';
+
+// Org ID formats: legacy IDs carry no region suffix (e.g. "18PNWR", "thefullstory.com");
+// post-umbrella IDs end in "-na1" (the default) or another realm, e.g. "-eu1". A standard
+// type prefix (the first section) is a single character (o, u, p, etc.) - more than one
+// means this is a legacy ID that happens to contain hyphens, not a realm suffix.
+function orgRealm(orgId) {
+  const sections = orgId ? orgId.split('-') : [];
+  if (sections.length < 3 || sections[0].length > 1) {
+    return undefined;
+  }
+  const realm = sections[sections.length - 1];
+  return realm === 'na1' ? undefined : realm;
+}
 
 
 (function (){
-  log('Recieved data:', data);
+  log('Received data:', data);
 
   if (!orgId) {
     return onFailure();
   }
 
-  setInWindow('_fs_host', host);
-  setInWindow('_fs_script', script);
-  setInWindow('_fs_namespace', namespace);
-  setInWindow('_fs_org', orgId);
   setInWindow('_fs_run_in_iframe', runInIframe);
 
-  const url = "https://edge.fullstory.com/d/snippet/v2.js?type=raw";
+  const realm = orgRealm(orgId);
+  // Only these two edges are known to actually serve /d/snippet requests today. A realm
+  // this doesn't recognize still loads from the na1 edge until that realm's own edge is
+  // confirmed and added here.
+  const edgeHost = realm === 'eu1' ? EU_EDGE_HOST : EDGE_HOST;
+
+  let url = 'https://' + edgeHost + '/d/snippet/v2.1.js?type=core' +
+      '&org=' + encodeUriComponent(orgId);
+
+  let host;
+  let script;
+  let appHost;
+
+  if (customEndpoint) {
+    host = customEndpoint;
+    script = customEndpoint + '/s/fs.js';
+    // The Custom Endpoint replaces `host`, so fs.js can no longer infer which Fullstory
+    // app to link back to (e.g. the "View this session" toolbar) from it - that has to be
+    // set explicitly, realm-adjusted the same way host/script are. A Custom Endpoint only
+    // guarantees to proxy recording traffic, not the fs-debug.js CDN asset, so debug mode
+    // is ignored here rather than pointed at a script the endpoint may not serve.
+    appHost = realm ? 'app.' + realm + '.fullstory.com' : APP_HOST;
+  } else if (realm) {
+    host = realm + '.fullstory.com';
+    script = 'edge.' + realm + '.fullstory.com/s/' + (debugMode ? 'fs-debug.js' : 'fs.js');
+  } else if (debugMode) {
+    script = edgeHost + '/s/fs-debug.js';
+  }
+
+  if (host) {
+    url = url + '&host=' + encodeUriComponent(host);
+  }
+
+  if (script) {
+    url = url + '&script=' + encodeUriComponent(script);
+  }
+
+  if (appHost) {
+    url = url + '&appHost=' + encodeUriComponent(appHost);
+  }
 
   injectScript(url, onSuccess, onFailure);
 
@@ -150,6 +215,10 @@ ___WEB_PERMISSIONS___
               {
                 "type": 1,
                 "string": "https://edge.fullstory.com/d/snippet/*"
+              },
+              {
+                "type": 1,
+                "string": "https://edge.eu1.fullstory.com/d/snippet/*"
               }
             ]
           }
@@ -196,163 +265,7 @@ ___WEB_PERMISSIONS___
                 "mapValue": [
                   {
                     "type": 1,
-                    "string": "_fs_host"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "_fs_script"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
                     "string": "_fs_run_in_iframe"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "_fs_org"
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": true
-                  },
-                  {
-                    "type": 8,
-                    "boolean": false
-                  }
-                ]
-              },
-              {
-                "type": 3,
-                "mapKey": [
-                  {
-                    "type": 1,
-                    "string": "key"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read"
-                  },
-                  {
-                    "type": 1,
-                    "string": "write"
-                  },
-                  {
-                    "type": 1,
-                    "string": "execute"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "_fs_namespace"
                   },
                   {
                     "type": 8,
@@ -393,6 +306,147 @@ scenarios:
     runCode({ orgId:"test" });
 
     assertApi('gtmOnSuccess').wasCalled();
+- name: TestSetsOrgIdOnInjectedUrl
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123');
+- name: TestDebugModeUsesDebugScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&script=edge.fullstory.com%2Fs%2Ffs-debug.js');
+- name: TestFailsWithoutOrgId
+  code: |-
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        onSuccess();
+    });
+
+    runCode({ orgId:"" });
+
+    assertApi('gtmOnFailure').wasCalled();
+- name: TestCustomEndpointSetsHostAndScriptOnInjectedUrl
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", customEndpoint:"analytics.example.com" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
+- name: TestCustomEndpointIgnoresDebugMode
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", customEndpoint:"analytics.example.com", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
+- name: TestEuOrgUsesEuEdgeHostForLoaderUrl
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=eu1.fullstory.com&script=edge.eu1.fullstory.com%2Fs%2Ffs.js');
+- name: TestEuOrgDebugModeUsesEuDebugScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=eu1.fullstory.com&script=edge.eu1.fullstory.com%2Fs%2Ffs-debug.js');
+- name: TestEuOrgWithCustomEndpointSetsEuAppHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
+- name: TestEuOrgWithCustomEndpointIgnoresDebugModeButKeepsAppHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
+- name: TestUnknownRealmStillGetsDynamicHostAndScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-ap1" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-ap1&host=ap1.fullstory.com&script=edge.ap1.fullstory.com%2Fs%2Ffs.js');
+- name: TestUnknownRealmDebugModeUsesRealmAdjustedDebugScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-ap1", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-ap1&host=ap1.fullstory.com&script=edge.ap1.fullstory.com%2Fs%2Ffs-debug.js');
+- name: TestNa1ExplicitOrgIdUsesDefaultEdgeHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-na1" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-na1');
+- name: TestLegacyDomainStyleOrgIdIsNotTreatedAsEu
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"thefullstory.com" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=thefullstory.com');
 
 
 ___NOTES___
