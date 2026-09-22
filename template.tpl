@@ -54,7 +54,7 @@ ___TEMPLATE_PARAMETERS___
     "name": "debugMode",
     "checkboxText": "Debug mode",
     "simpleValueType": true,
-    "help": "Enables Fullstory debug mode."
+    "help": "Enables Fullstory debug mode. Ignored if using Custom Endpoints."
   },
   {
     "type": "CHECKBOX",
@@ -139,16 +139,14 @@ function orgRealm(orgId) {
     script = customEndpoint + '/s/fs.js';
     // The Custom Endpoint replaces `host`, so fs.js can no longer infer which Fullstory
     // app to link back to (e.g. the "View this session" toolbar) from it - that has to be
-    // set explicitly, realm-adjusted the same way host/script are.
+    // set explicitly, realm-adjusted the same way host/script are. A Custom Endpoint only
+    // guarantees to proxy recording traffic, not the fs-debug.js CDN asset, so debug mode
+    // is ignored here rather than pointed at a script the endpoint may not serve.
     appHost = realm ? 'app.' + realm + '.fullstory.com' : APP_HOST;
   } else if (realm) {
     host = realm + '.fullstory.com';
-    script = 'edge.' + realm + '.fullstory.com/s/fs.js';
-  }
-
-  if (debugMode) {
-    // Debug mode always loads Fullstory's own debug build: a Custom Endpoint is only
-    // guaranteed to proxy recording traffic, not the fs-debug.js CDN asset.
+    script = 'edge.' + realm + '.fullstory.com/s/' + (debugMode ? 'fs-debug.js' : 'fs.js');
+  } else if (debugMode) {
     script = edgeHost + '/s/fs-debug.js';
   }
 
@@ -350,7 +348,7 @@ scenarios:
     runCode({ orgId:"abc123", customEndpoint:"analytics.example.com" });
 
     assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
-- name: TestDebugModeOverridesCustomEndpointScriptButKeepsHost
+- name: TestCustomEndpointIgnoresDebugMode
   code: |-
     let capturedUrl;
     mock('injectScript', function(url, onSuccess, onFailure) {
@@ -360,7 +358,7 @@ scenarios:
 
     runCode({ orgId:"abc123", customEndpoint:"analytics.example.com", debugMode:true });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=edge.fullstory.com%2Fs%2Ffs-debug.js&appHost=app.fullstory.com');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
 - name: TestEuOrgUsesEuEdgeHostForLoaderUrl
   code: |-
     let capturedUrl;
@@ -394,7 +392,7 @@ scenarios:
     runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com" });
 
     assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
-- name: TestEuOrgWithCustomEndpointAndDebugModeStillRealmAdjustsAppHost
+- name: TestEuOrgWithCustomEndpointIgnoresDebugModeButKeepsAppHost
   code: |-
     let capturedUrl;
     mock('injectScript', function(url, onSuccess, onFailure) {
@@ -404,7 +402,7 @@ scenarios:
 
     runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com", debugMode:true });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=edge.eu1.fullstory.com%2Fs%2Ffs-debug.js&appHost=app.eu1.fullstory.com');
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
 - name: TestUnknownRealmStillGetsDynamicHostAndScript
   code: |-
     let capturedUrl;
@@ -416,6 +414,17 @@ scenarios:
     runCode({ orgId:"o-1ABC23-ap1" });
 
     assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-ap1&host=ap1.fullstory.com&script=edge.ap1.fullstory.com%2Fs%2Ffs.js');
+- name: TestUnknownRealmDebugModeUsesRealmAdjustedDebugScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-ap1", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-ap1&host=ap1.fullstory.com&script=edge.ap1.fullstory.com%2Fs%2Ffs-debug.js');
 - name: TestNa1ExplicitOrgIdUsesDefaultEdgeHost
   code: |-
     let capturedUrl;
