@@ -73,7 +73,7 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "REGEX",
         "args": [
-          "^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+          "^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+)?$"
         ]
       }
     ]
@@ -96,15 +96,19 @@ const customEndpoint = data.customEndpoint;
 
 const EDGE_HOST = 'edge.fullstory.com';
 const EU_EDGE_HOST = 'edge.eu1.fullstory.com';
-
 const APP_HOST = 'app.fullstory.com';
-const EU_APP_HOST = 'app.eu1.fullstory.com';
 
 // Org ID formats: legacy IDs carry no region suffix (e.g. "18PNWR", "thefullstory.com");
-// post-umbrella IDs end in "-na1" (the default, so no adjustment is needed) or "-eu1".
-function isEuOrg(orgId) {
+// post-umbrella IDs end in "-na1" (the default) or another realm, e.g. "-eu1". A standard
+// type prefix (the first section) is a single character (o, u, p, etc.) - more than one
+// means this is a legacy ID that happens to contain hyphens, not a realm suffix.
+function orgRealm(orgId) {
   const sections = orgId ? orgId.split('-') : [];
-  return sections.length >= 3 && sections[sections.length - 1] === 'eu1';
+  if (sections.length < 3 || sections[0].length > 1) {
+    return undefined;
+  }
+  const realm = sections[sections.length - 1];
+  return realm === 'na1' ? undefined : realm;
 }
 
 
@@ -117,27 +121,35 @@ function isEuOrg(orgId) {
 
   setInWindow('_fs_run_in_iframe', runInIframe);
 
-  const isEu = isEuOrg(orgId);
-  const edgeHost = isEu ? EU_EDGE_HOST : EDGE_HOST;
+  const realm = orgRealm(orgId);
+  // Only these two edges are known to actually serve /d/snippet requests today. A realm
+  // this doesn't recognize still loads from the na1 edge until that realm's own edge is
+  // confirmed and added here.
+  const edgeHost = realm === 'eu1' ? EU_EDGE_HOST : EDGE_HOST;
 
   let url = 'https://' + edgeHost + '/d/snippet/v2.1.js?type=core' +
       '&org=' + encodeUriComponent(orgId);
 
-  // Debug mode always loads Fullstory's own debug build: a Custom Endpoint is only
-  // guaranteed to proxy recording traffic, not the fs-debug.js CDN asset.
-  let script = debugMode ? edgeHost + '/s/fs-debug.js' : undefined;
   let host;
+  let script;
   let appHost;
 
   if (customEndpoint) {
     host = customEndpoint;
+    script = customEndpoint + '/s/fs.js';
     // The Custom Endpoint replaces `host`, so fs.js can no longer infer which Fullstory
     // app to link back to (e.g. the "View this session" toolbar) from it - that has to be
-    // set explicitly, realm-adjusted the same way the edge host is.
-    appHost = isEu ? EU_APP_HOST : APP_HOST;
-    if (!script) {
-      script = customEndpoint + '/s/fs.js';
-    }
+    // set explicitly, realm-adjusted the same way host/script are.
+    appHost = realm ? 'app.' + realm + '.fullstory.com' : APP_HOST;
+  } else if (realm) {
+    host = realm + '.fullstory.com';
+    script = 'edge.' + realm + '.fullstory.com/s/fs.js';
+  }
+
+  if (debugMode) {
+    // Debug mode always loads Fullstory's own debug build: a Custom Endpoint is only
+    // guaranteed to proxy recording traffic, not the fs-debug.js CDN asset.
+    script = edgeHost + '/s/fs-debug.js';
   }
 
   if (host) {
@@ -306,7 +318,7 @@ scenarios:
 
     runCode({ orgId:"abc123" });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123');
 - name: TestDebugModeUsesDebugScript
   code: |-
     let capturedUrl;
@@ -317,7 +329,7 @@ scenarios:
 
     runCode({ orgId:"abc123", debugMode:true });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123&script=edge.fullstory.com%2Fs%2Ffs-debug.js');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&script=edge.fullstory.com%2Fs%2Ffs-debug.js');
 - name: TestFailsWithoutOrgId
   code: |-
     mock('injectScript', function(url, onSuccess, onFailure) {
@@ -337,7 +349,7 @@ scenarios:
 
     runCode({ orgId:"abc123", customEndpoint:"analytics.example.com" });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
 - name: TestDebugModeOverridesCustomEndpointScriptButKeepsHost
   code: |-
     let capturedUrl;
@@ -348,7 +360,7 @@ scenarios:
 
     runCode({ orgId:"abc123", customEndpoint:"analytics.example.com", debugMode:true });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123&host=analytics.example.com&script=edge.fullstory.com%2Fs%2Ffs-debug.js&appHost=app.fullstory.com');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=abc123&host=analytics.example.com&script=edge.fullstory.com%2Fs%2Ffs-debug.js&appHost=app.fullstory.com');
 - name: TestEuOrgUsesEuEdgeHostForLoaderUrl
   code: |-
     let capturedUrl;
@@ -359,7 +371,7 @@ scenarios:
 
     runCode({ orgId:"o-1ABC23-eu1" });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-eu1');
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=eu1.fullstory.com&script=edge.eu1.fullstory.com%2Fs%2Ffs.js');
 - name: TestEuOrgDebugModeUsesEuDebugScript
   code: |-
     let capturedUrl;
@@ -370,7 +382,7 @@ scenarios:
 
     runCode({ orgId:"o-1ABC23-eu1", debugMode:true });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-eu1&script=edge.eu1.fullstory.com%2Fs%2Ffs-debug.js');
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=eu1.fullstory.com&script=edge.eu1.fullstory.com%2Fs%2Ffs-debug.js');
 - name: TestEuOrgWithCustomEndpointSetsEuAppHost
   code: |-
     let capturedUrl;
@@ -381,7 +393,29 @@ scenarios:
 
     runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com" });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
+- name: TestEuOrgWithCustomEndpointAndDebugModeStillRealmAdjustsAppHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-eu1&host=analytics.example.com&script=edge.eu1.fullstory.com%2Fs%2Ffs-debug.js&appHost=app.eu1.fullstory.com');
+- name: TestUnknownRealmStillGetsDynamicHostAndScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-ap1" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-ap1&host=ap1.fullstory.com&script=edge.ap1.fullstory.com%2Fs%2Ffs.js');
 - name: TestNa1ExplicitOrgIdUsesDefaultEdgeHost
   code: |-
     let capturedUrl;
@@ -392,7 +426,7 @@ scenarios:
 
     runCode({ orgId:"o-1ABC23-na1" });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-na1');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=o-1ABC23-na1');
 - name: TestLegacyDomainStyleOrgIdIsNotTreatedAsEu
   code: |-
     let capturedUrl;
@@ -403,7 +437,7 @@ scenarios:
 
     runCode({ orgId:"thefullstory.com" });
 
-    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=thefullstory.com');
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=thefullstory.com');
 
 
 ___NOTES___
