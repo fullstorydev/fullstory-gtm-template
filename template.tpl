@@ -11,7 +11,7 @@ ___INFO___
 {
   "type": "TAG",
   "id": "cvt_temp_public_id",
-  "version": 2,
+  "version": 1,
   "securityGroups": [],
   "displayName": "Fullstory - Browser Tag",
   "categories": ["ANALYTICS", "CONVERSIONS", "DATA_WAREHOUSING", "HEAT_MAP", "SESSION_RECORDING"],
@@ -62,6 +62,21 @@ ___TEMPLATE_PARAMETERS___
     "checkboxText": "Enable capture inside an iframe",
     "simpleValueType": true,
     "help": "Enables Fullstory inside an iframe."
+  },
+  {
+    "type": "TEXT",
+    "name": "customEndpoint",
+    "displayName": "Custom Endpoint (Optional)",
+    "simpleValueType": true,
+    "help": "If your org sends traffic through a Fullstory-managed Custom Endpoint (your own domain, CNAME'd to Fullstory), enter that domain here, e.g. \"analytics.example.com\". Leave blank to use Fullstory's default domain. Learn more: https://help.fullstory.com/hc/en-us/articles/18612999473175",
+    "valueValidators": [
+      {
+        "type": "REGEX",
+        "args": [
+          "^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+        ]
+      }
+    ]
   }
 ]
 
@@ -77,8 +92,20 @@ const log = require('logToConsole');
 const debugMode = data.debugMode;
 const runInIframe = data.runInIframe;
 const orgId = data.orgId;
+const customEndpoint = data.customEndpoint;
 
-const DEBUG_SCRIPT = 'edge.fullstory.com/s/fs-debug.js';
+const EDGE_HOST = 'edge.fullstory.com';
+const EU_EDGE_HOST = 'edge.eu1.fullstory.com';
+
+const APP_HOST = 'app.fullstory.com';
+const EU_APP_HOST = 'app.eu1.fullstory.com';
+
+// Org ID formats: legacy IDs carry no region suffix (e.g. "18PNWR", "thefullstory.com");
+// post-umbrella IDs end in "-na1" (the default, so no adjustment is needed) or "-eu1".
+function isEuOrg(orgId) {
+  const sections = orgId ? orgId.split('-') : [];
+  return sections.length >= 3 && sections[sections.length - 1] === 'eu1';
+}
 
 
 (function (){
@@ -90,11 +117,39 @@ const DEBUG_SCRIPT = 'edge.fullstory.com/s/fs-debug.js';
 
   setInWindow('_fs_run_in_iframe', runInIframe);
 
-  let url = 'https://edge.fullstory.com/d/snippet/v2.1.js?type=raw' +
+  const isEu = isEuOrg(orgId);
+  const edgeHost = isEu ? EU_EDGE_HOST : EDGE_HOST;
+
+  let url = 'https://' + edgeHost + '/d/snippet/v2.1.js?type=core' +
       '&org=' + encodeUriComponent(orgId);
 
-  if (debugMode) {
-    url = url + '&script=' + encodeUriComponent(DEBUG_SCRIPT);
+  // Debug mode always loads Fullstory's own debug build: a Custom Endpoint is only
+  // guaranteed to proxy recording traffic, not the fs-debug.js CDN asset.
+  let script = debugMode ? edgeHost + '/s/fs-debug.js' : undefined;
+  let host;
+  let appHost;
+
+  if (customEndpoint) {
+    host = customEndpoint;
+    // The Custom Endpoint replaces `host`, so fs.js can no longer infer which Fullstory
+    // app to link back to (e.g. the "View this session" toolbar) from it - that has to be
+    // set explicitly, realm-adjusted the same way the edge host is.
+    appHost = isEu ? EU_APP_HOST : APP_HOST;
+    if (!script) {
+      script = customEndpoint + '/s/fs.js';
+    }
+  }
+
+  if (host) {
+    url = url + '&host=' + encodeUriComponent(host);
+  }
+
+  if (script) {
+    url = url + '&script=' + encodeUriComponent(script);
+  }
+
+  if (appHost) {
+    url = url + '&appHost=' + encodeUriComponent(appHost);
   }
 
   injectScript(url, onSuccess, onFailure);
@@ -150,6 +205,10 @@ ___WEB_PERMISSIONS___
               {
                 "type": 1,
                 "string": "https://edge.fullstory.com/d/snippet/*"
+              },
+              {
+                "type": 1,
+                "string": "https://edge.eu1.fullstory.com/d/snippet/*"
               }
             ]
           }
@@ -268,6 +327,83 @@ scenarios:
     runCode({ orgId:"" });
 
     assertApi('gtmOnFailure').wasCalled();
+- name: TestCustomEndpointSetsHostAndScriptOnInjectedUrl
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", customEndpoint:"analytics.example.com" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.fullstory.com');
+- name: TestDebugModeOverridesCustomEndpointScriptButKeepsHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", customEndpoint:"analytics.example.com", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=abc123&host=analytics.example.com&script=edge.fullstory.com%2Fs%2Ffs-debug.js&appHost=app.fullstory.com');
+- name: TestEuOrgUsesEuEdgeHostForLoaderUrl
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-eu1');
+- name: TestEuOrgDebugModeUsesEuDebugScript
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1", debugMode:true });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-eu1&script=edge.eu1.fullstory.com%2Fs%2Ffs-debug.js');
+- name: TestEuOrgWithCustomEndpointSetsEuAppHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-eu1", customEndpoint:"analytics.example.com" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.eu1.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-eu1&host=analytics.example.com&script=analytics.example.com%2Fs%2Ffs.js&appHost=app.eu1.fullstory.com');
+- name: TestNa1ExplicitOrgIdUsesDefaultEdgeHost
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"o-1ABC23-na1" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=o-1ABC23-na1');
+- name: TestLegacyDomainStyleOrgIdIsNotTreatedAsEu
+  code: |-
+    let capturedUrl;
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        capturedUrl = url;
+        onSuccess();
+    });
+
+    runCode({ orgId:"thefullstory.com" });
+
+    assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=raw&org=thefullstory.com');
 
 
 ___NOTES___
