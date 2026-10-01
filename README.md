@@ -23,3 +23,9 @@ Enable debug mode for Fullstory. This is useful for troubleshooting any issues w
 Allow Fullstory to capture data from within an iframe. This is required only for certain implementation scenarios. This flag is equivalent to setting the global flag `window['_fs_run_in_iframe']`.
 
 For more information about this flag please visit the [help page here](https://help.fullstory.com/hc/en-us/articles/360020622514-Can-Fullstory-capture-content-that-is-presented-in-iframes).
+
+### Custom Endpoint (Optional)
+
+If your org sends traffic through a Fullstory-managed Custom Endpoint (your own domain, CNAME'd to Fullstory), enter that domain here, e.g. `analytics.example.com`. Leave blank to use Fullstory's default domain.
+
+For more information on Custom Endpoints, visit the [help page here](https://help.fullstory.com/hc/en-us/articles/18612999473175-How-to-send-captured-traffic-to-Fullstory-using-Custom-Endpoints).
