@@ -64,6 +64,43 @@ ___TEMPLATE_PARAMETERS___
     "help": "Enables Fullstory inside an iframe."
   },
   {
+    "type": "CHECKBOX",
+    "name": "recordOnlyThisIFrame",
+    "checkboxText": "Capture only this iframe",
+    "simpleValueType": true,
+    "help": "Makes this iframe the root of its own recording, as its own session. Use this when your page is embedded in an iframe on a site that does not run Fullstory, or when you want its content sent to a different Fullstory org."
+  },
+  {
+    "type": "TEXT",
+    "name": "cookieDomain",
+    "displayName": "Cookie Domain (Optional)",
+    "simpleValueType": true,
+    "help": "Overrides the domain the Fullstory cookie is valid for. By default the cookie is valid for all subdomains of your site; enter a domain here to limit it, e.g. \"app.example.com\". Learn more: https://help.fullstory.com/hc/en-us/articles/360020622874",
+    "valueValidators": [
+      {
+        "type": "REGEX",
+        "args": [
+          "^(\\.?[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+)?$"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "TEXT",
+    "name": "assetMapId",
+    "displayName": "Asset Map ID (Optional)",
+    "simpleValueType": true,
+    "help": "Sets the current asset map ID. Only needed if you upload assets to Fullstory. Learn more: https://help.fullstory.com/hc/en-us/articles/4404129191575",
+    "valueValidators": [
+      {
+        "type": "REGEX",
+        "args": [
+          "^\\S*$"
+        ]
+      }
+    ]
+  },
+  {
     "type": "TEXT",
     "name": "customEndpoint",
     "displayName": "Custom Endpoint (Optional)",
@@ -91,6 +128,9 @@ const log = require('logToConsole');
 
 const debugMode = data.debugMode;
 const runInIframe = data.runInIframe;
+const recordOnlyThisIFrame = data.recordOnlyThisIFrame;
+const cookieDomain = data.cookieDomain;
+const assetMapId = data.assetMapId;
 const orgId = data.orgId;
 const customEndpoint = data.customEndpoint;
 
@@ -119,6 +159,18 @@ function orgRealm(orgId) {
   }
 
   setInWindow('_fs_run_in_iframe', runInIframe);
+
+  // fs.js reads these globals at startup. Only write the ones the customer set, so a blank
+  // field leaves the window untouched and keeps Fullstory's default behavior.
+  if (recordOnlyThisIFrame) {
+    setInWindow('_fs_is_outer_script', true);
+  }
+  if (cookieDomain) {
+    setInWindow('_fs_cookie_domain', cookieDomain);
+  }
+  if (assetMapId) {
+    setInWindow('_fs_asset_map_id', assetMapId);
+  }
 
   const realm = orgRealm(orgId);
   // Only these two edges are known to actually serve /d/snippet requests today. A realm
@@ -257,6 +309,123 @@ ___WEB_PERMISSIONS___
                   {
                     "type": 1,
                     "string": "_fs_run_in_iframe"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "_fs_is_outer_script"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "_fs_cookie_domain"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "_fs_asset_map_id"
                   },
                   {
                     "type": 8,
@@ -438,6 +607,62 @@ scenarios:
     runCode({ orgId:"thefullstory.com" });
 
     assertThat(capturedUrl).isEqualTo('https://edge.fullstory.com/d/snippet/v2.1.js?type=core&org=thefullstory.com');
+
+- name: TestRecordOnlyThisIFrameSetsOuterScriptGlobal
+  code: |-
+    const written = {};
+    mock('setInWindow', function(key, value) {
+        written[key] = value;
+    });
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", recordOnlyThisIFrame:true });
+
+    assertThat(written['_fs_is_outer_script']).isEqualTo(true);
+- name: TestCookieDomainSetsGlobal
+  code: |-
+    const written = {};
+    mock('setInWindow', function(key, value) {
+        written[key] = value;
+    });
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", cookieDomain:"app.example.com" });
+
+    assertThat(written['_fs_cookie_domain']).isEqualTo('app.example.com');
+- name: TestAssetMapIdSetsGlobal
+  code: |-
+    const written = {};
+    mock('setInWindow', function(key, value) {
+        written[key] = value;
+    });
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", assetMapId:"asset-map-1" });
+
+    assertThat(written['_fs_asset_map_id']).isEqualTo('asset-map-1');
+- name: TestUnsetOptionsDoNotWriteGlobals
+  code: |-
+    const written = {};
+    mock('setInWindow', function(key, value) {
+        written[key] = value;
+    });
+    mock('injectScript', function(url, onSuccess, onFailure) {
+        onSuccess();
+    });
+
+    runCode({ orgId:"abc123", recordOnlyThisIFrame:false, cookieDomain:"", assetMapId:"" });
+
+    assertThat(written['_fs_is_outer_script']).isUndefined();
+    assertThat(written['_fs_cookie_domain']).isUndefined();
+    assertThat(written['_fs_asset_map_id']).isUndefined();
+    assertThat(written['_fs_capture_on_startup']).isUndefined();
 
 
 ___NOTES___
