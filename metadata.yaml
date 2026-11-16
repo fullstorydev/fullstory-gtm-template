@@ -1,5 +1,7 @@
 homepage: "https://www.fullstory.com"
 documentation: https://github.com/fullstorydev/fullstory-gtm-template/blob/main/README.md
 versions:
+  - sha: f76ce329a81937512a0c2d830915b15619e0df3b
+    changeNotes: Upgrades to Fullstory snippet 2.1. Adds Custom Endpoint, Capture only this iframe, Cookie Domain, and Asset Map ID options, and realm-aware (EU and other) hosts.
   - sha: d01f97ce7e4170a1ef46dbf879ff69000cd1a4cd
     changeNotes: Fixes fs.js Script url.
